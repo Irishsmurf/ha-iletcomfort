@@ -171,3 +171,8 @@ def test_energy_and_power_sensors(hass: HomeAssistant):
         desc = next(d for d in SENSOR_DESCRIPTIONS if d.key == key)
         sensor = ILetComfortSensor(coord, desc)
         assert sensor.native_value == val
+
+    coord.data["status"].set_temperature = 55
+    desc = next(d for d in SENSOR_DESCRIPTIONS if d.key == "dhw_setpoint")
+    sensor = ILetComfortSensor(coord, desc)
+    assert sensor.native_value == 55

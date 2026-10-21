@@ -594,3 +594,17 @@ def test_query_energy_calls_subtypes_08_and_0a():
     assert energy.realtime_production_w == 1000
     assert energy.realtime_production_kw == 1.00
     assert energy.cop == round(1.00 / 0.72, 2)
+
+
+def test_decode_atw_energy_idle_zero_power():
+    """When idle, power consumption and production report 0.0 with 0.0 COP."""
+    raw_08_body = bytes([0x08] + [0] * 98 + [0x00, 0x00])
+    raw_0a_body = bytes([0x0A, 0x00, 0x00, 0x0A, 0x00, 0x14] + [0] * 38 + [0x00, 0x00])
+
+    energy = decode_atw_energy(_c3_frame(raw_08_body), _c3_frame(raw_0a_body))
+
+    assert energy.realtime_consumption_kw == 0.0
+    assert energy.realtime_consumption_w == 0
+    assert energy.realtime_production_kw == 0.0
+    assert energy.realtime_production_w == 0
+    assert energy.cop == 0.0

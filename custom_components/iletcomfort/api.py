@@ -528,7 +528,7 @@ def decode_atw_energy(
             # Offset 99 in body corresponds to word 49 (realtime consumption in 10W units / 0.01 kW)
             if len(body) >= 101 and body[0] == 0x08:
                 cons_val = (body[99] << 8) | body[100]
-                if cons_val > 0:
+                if cons_val >= 0:
                     cons_kw = round(cons_val / 100.0, 2)
                     energy.realtime_consumption_kw = cons_kw
                     energy.realtime_consumption_w = int(cons_kw * 1000)
@@ -549,7 +549,7 @@ def decode_atw_energy(
 
                 if len(body) >= 46:
                     prod_w = (body[44] << 8) | body[45]
-                    if prod_w > 0:
+                    if prod_w >= 0:
                         prod_kw = round(prod_w / 1000.0, 2)
                         energy.realtime_production_kw = prod_kw
                         energy.realtime_production_w = prod_w
@@ -563,6 +563,8 @@ def decode_atw_energy(
                         energy.realtime_production_kw / energy.realtime_consumption_kw,
                         2,
                     )
+                else:
+                    energy.cop = 0.0
         except Exception as err:
             _LOGGER.debug("Failed to decode subtype 0x0a frame: %s", err)
 

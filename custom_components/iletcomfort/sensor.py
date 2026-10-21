@@ -90,6 +90,14 @@ SENSOR_DESCRIPTIONS: tuple[ILetComfortSensorDescription, ...] = (
         value_fn=_s("th_temp"),
     ),
     ILetComfortSensorDescription(
+        key="dhw_setpoint",
+        name="DHW Setpoint",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_st("set_temperature"),
+    ),
+    ILetComfortSensorDescription(
         key="power_consumption",
         name="Power Consumption",
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
