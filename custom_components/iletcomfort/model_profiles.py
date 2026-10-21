@@ -151,12 +151,13 @@ ATW_GALMET_ZONE1_SETPOINT_INDEX = 6
 
 
 def _is_galmet_atw_status(body: bytearray | bytes) -> bool:
-    """Return whether ``body`` has the hardware-validated Galmet layout."""
+    """Return whether ``body`` has the hardware-validated 27-byte ATW layout."""
     return (
         len(body) == 27
         and body[0] == 0x01
-        and body[2:6] == b"\x15\xa0\x03\x03"
-        and body[24:27] == b"\xe0\x03\x03"
+        and body[4:6] == b"\x03\x03"
+        and body[24] == 0xE0
+        and body[26] == 0x03
     )
 
 
@@ -195,6 +196,7 @@ def decode_atw_status(body: bytearray | bytes) -> ITSStatus:
     # Galmet variant stores direct degrees at byte[6] despite sharing the sn8.
     if is_galmet:
         status.t5s_def = float(body[ATW_GALMET_ZONE1_SETPOINT_INDEX])
+        status.total_kwh = body[2]
     else:
         status.t5s_def = body[ATW_ZONE1_SETPOINT_X2_INDEX] / 2
     # DHW tank current temp — direct °C value. Surfaced via box_bottom_temp,

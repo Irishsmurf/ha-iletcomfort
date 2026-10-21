@@ -8,7 +8,7 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.iletcomfort.api import ITSSensors, ITSStatus
+from custom_components.iletcomfort.api import ITSEnergy, ITSSensors, ITSStatus
 from custom_components.iletcomfort.binary_sensor import (
     BINARY_SENSOR_DESCRIPTIONS,
     ILetComfortBinarySensor,
@@ -144,3 +144,30 @@ def test_zero_error_code_has_no_fault_attributes(hass: HomeAssistant):
 
     assert sensor.native_value == 0
     assert sensor.extra_state_attributes == {}
+
+
+def test_energy_and_power_sensors(hass: HomeAssistant):
+    """Energy, power, and COP sensors surface telemetry from coordinator data."""
+    coord = _coordinator(hass)
+    coord.data["energy"] = ITSEnergy(
+        realtime_consumption_kw=0.72,
+        realtime_production_kw=2.07,
+        cop=2.88,
+        total_consumption_kwh=79,
+        heating_consumption_kwh=52,
+        dhw_consumption_kwh=27,
+    )
+
+    expected = {
+        "power_consumption": 0.72,
+        "heat_production_power": 2.07,
+        "cop": 2.88,
+        "energy_consumption": 79,
+        "heating_energy_consumption": 52,
+        "dhw_energy_consumption": 27,
+    }
+
+    for key, val in expected.items():
+        desc = next(d for d in SENSOR_DESCRIPTIONS if d.key == key)
+        sensor = ILetComfortSensor(coord, desc)
+        assert sensor.native_value == val

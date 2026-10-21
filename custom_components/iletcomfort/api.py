@@ -495,6 +495,81 @@ def decode_its_sensors(body: bytearray) -> ITSSensors:
 
 
 # ---------------------------------------------------------------------------
+# ITS protocol response decoding -- subtype 0x08 & 0x0a (Energy Telemetry)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ITSEnergy:
+    """Decoded C3 energy and power telemetry (subtypes 0x08 and 0x0a)."""
+
+    realtime_consumption_kw: float | None = None
+    realtime_consumption_w: int | None = None
+    realtime_production_kw: float | None = None
+    realtime_production_w: int | None = None
+    total_consumption_kwh: int | None = None
+    heating_consumption_kwh: int | None = None
+    dhw_consumption_kwh: int | None = None
+    cop: float | None = None
+    raw_body_08: bytes = b""
+    raw_body_0a: bytes = b""
+
+
+def decode_atw_energy(
+    raw_08_hex: str | None = None,
+    raw_0a_hex: str | None = None,
+) -> ITSEnergy:
+    """Decode Subtype 0x08 and 0x0a hex responses into an ITSEnergy object."""
+    energy = ITSEnergy()
+    if raw_08_hex:
+        try:
+            raw = parse_hex_response(raw_08_hex)
+            _body_type, body = extract_c3_body(raw)
+            energy.raw_body_08 = bytes(body)
+            # Offset 99 in body corresponds to word 49 (realtime consumption in 10W units / 0.01 kW)
+            if len(body) >= 101 and body[0] == 0x08:
+                cons_val = (body[99] << 8) | body[100]
+                if cons_val > 0:
+                    cons_kw = round(cons_val / 100.0, 2)
+                    energy.realtime_consumption_kw = cons_kw
+                    energy.realtime_consumption_w = int(cons_kw * 1000)
+        except Exception as err:
+            _LOGGER.debug("Failed to decode subtype 0x08 frame: %s", err)
+
+    if raw_0a_hex:
+        try:
+            raw = parse_hex_response(raw_0a_hex)
+            _body_type, body = extract_c3_body(raw)
+            energy.raw_body_0a = bytes(body)
+            if len(body) >= 10 and body[0] == 0x0a:
+                dhw_cons = (body[2] << 8) | body[3]
+                heat_cons = (body[4] << 8) | body[5]
+                energy.dhw_consumption_kwh = dhw_cons
+                energy.heating_consumption_kwh = heat_cons
+                energy.total_consumption_kwh = dhw_cons + heat_cons
+
+                if len(body) >= 46:
+                    prod_w = (body[44] << 8) | body[45]
+                    if prod_w > 0:
+                        prod_kw = round(prod_w / 1000.0, 2)
+                        energy.realtime_production_kw = prod_kw
+                        energy.realtime_production_w = prod_w
+
+                if (
+                    energy.realtime_consumption_kw
+                    and energy.realtime_production_kw
+                    and energy.realtime_consumption_kw > 0
+                ):
+                    energy.cop = round(
+                        energy.realtime_production_kw / energy.realtime_consumption_kw,
+                        2,
+                    )
+        except Exception as err:
+            _LOGGER.debug("Failed to decode subtype 0x0a frame: %s", err)
+
+    return energy
+
+
+# ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
 
@@ -810,6 +885,22 @@ class ILetComfortClient:
                 f"unsupported. Raw: {response_hex}"
             )
         return decode_its_sensors(body)
+
+    def query_energy(self, appliance_code: str) -> ITSEnergy:
+        """Query real-time power, energy consumption, and heat production telemetry."""
+        raw_08 = None
+        raw_0a = None
+        try:
+            raw_08 = self.send_hex_command(appliance_code, build_c3_query(0x08))
+        except Exception as err:
+            _LOGGER.debug("Subtype 0x08 query failed: %s", err)
+
+        try:
+            raw_0a = self.send_hex_command(appliance_code, build_c3_query(0x0a))
+        except Exception as err:
+            _LOGGER.debug("Subtype 0x0a query failed: %s", err)
+
+        return decode_atw_energy(raw_08, raw_0a)
 
     def set_device(
         self,

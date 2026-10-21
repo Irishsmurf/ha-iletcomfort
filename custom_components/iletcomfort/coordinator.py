@@ -43,6 +43,7 @@ from .const import (
     MQTT_STATUS_STALE_AFTER,
 )
 from .model_profiles import (
+    ModelProfile,
     apply_profile_to_sensors,
     apply_profile_to_status,
     resolve_profile,
@@ -294,9 +295,18 @@ class ILetComfortCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # current_temperature and Water Inlet sensor read). STANDARD is a no-op.
         sensors = apply_profile_to_sensors(resolve_profile(sn8), sensors, status)
 
+        energy = cached.get("energy")
+        if resolve_profile(sn8) is ModelProfile.ATW:
+            try:
+                energy = await self.hass.async_add_executor_job(
+                    self.client.query_energy, self.appliance_code
+                )
+            except Exception as err:
+                _LOGGER.debug("Energy telemetry query failed: %s", err)
+
         self._update_offline_repair()
 
-        return {"status": status, "sensors": sensors}
+        return {"status": status, "sensors": sensors, "energy": energy}
 
     def _update_offline_repair(self) -> None:
         """Surface or clear the 'device appears offline' Repair card.

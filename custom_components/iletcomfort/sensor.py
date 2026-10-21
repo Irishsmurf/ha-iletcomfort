@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     UnitOfEnergy,
     UnitOfFrequency,
+    UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
     UnitOfElectricCurrent,
@@ -53,6 +54,16 @@ def _st(attr: str) -> Callable[[dict[str, Any]], Any]:
     return _get
 
 
+def _e(attr: str) -> Callable[[dict[str, Any]], Any]:
+    """Helper: get attribute from energy telemetry data."""
+    def _get(data: dict[str, Any]) -> Any:
+        energy = data.get("energy")
+        if energy is None:
+            return None
+        return getattr(energy, attr, None) if hasattr(energy, attr) else energy.get(attr)
+    return _get
+
+
 SENSOR_DESCRIPTIONS: tuple[ILetComfortSensorDescription, ...] = (
     ILetComfortSensorDescription(
         key="water_inlet",
@@ -77,6 +88,56 @@ SENSOR_DESCRIPTIONS: tuple[ILetComfortSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_s("th_temp"),
+    ),
+    ILetComfortSensorDescription(
+        key="power_consumption",
+        name="Power Consumption",
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=_e("realtime_consumption_kw"),
+    ),
+    ILetComfortSensorDescription(
+        key="heat_production_power",
+        name="Heat Production Power",
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=_e("realtime_production_kw"),
+    ),
+    ILetComfortSensorDescription(
+        key="cop",
+        name="COP",
+        icon="mdi:chart-line",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=_e("cop"),
+    ),
+    ILetComfortSensorDescription(
+        key="energy_consumption",
+        name="Energy Consumption",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_e("total_consumption_kwh"),
+    ),
+    ILetComfortSensorDescription(
+        key="heating_energy_consumption",
+        name="Heating Energy Consumption",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_e("heating_consumption_kwh"),
+    ),
+    ILetComfortSensorDescription(
+        key="dhw_energy_consumption",
+        name="DHW Energy Consumption",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_e("dhw_consumption_kwh"),
     ),
     ILetComfortSensorDescription(
         key="outdoor_ambient",

@@ -12,9 +12,11 @@ from custom_components.iletcomfort.api import (
     ApiError,
     AuthError,
     ILetComfortClient,
+    ITSEnergy,
     ITSStatus,
     build_c3_query,
     build_c3_set,
+    decode_atw_energy,
     mask_identifier,
 )
 
@@ -521,3 +523,74 @@ def test_v1_request_includes_access_token_header_when_requested():
     with patch.object(client._session, "post", side_effect=fake_post):
         client._v1_request("/x", {}, use_iot_key=True)
     assert "accessToken" not in captured["headers"]
+
+
+def test_decode_atw_energy_subtype_08_and_0a():
+    """Subtype 08 and 0a telemetry decodes into consumption, production, and COP."""
+    raw_08_body = bytes([
+        0x08, 0xE0, 0xC9, 0x00, 0x00, 0x00, 0x06, 0x00, 0x0A, 0x00,
+        0x05, 0x00, 0x2B, 0xFF, 0xF6, 0x00, 0x64, 0x00, 0x05, 0x00,
+        0x01, 0x00, 0x3C, 0x00, 0x5A, 0x00, 0x0A, 0x00, 0x05, 0x00,
+        0x05, 0x00, 0x02, 0x00, 0x34, 0x00, 0x0A, 0x00, 0x05, 0x00,
+        0x05, 0x00, 0x02, 0x00, 0x14, 0xFF, 0xF1, 0xFF, 0xFB, 0x00,
+        0x05, 0x00, 0x1E, 0x00, 0x05, 0xFF, 0xFB, 0x00, 0x05, 0x00,
+        0x00, 0x00, 0x1E, 0x00, 0x5A, 0x00, 0x1E, 0x00, 0x19, 0x00,
+        0x11, 0x00, 0x19, 0x00, 0x19, 0x00, 0x0A, 0x00, 0x05, 0x00,
+        0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x2D, 0x00,
+        0x16, 0x00, 0x08, 0x00, 0x05, 0x00, 0x05, 0x00, 0x2D,
+        0x00, 0x48,  # byte 99, 100: 0x0048 = 72 -> 0.72 kW
+    ])
+    raw_0a_body = bytes([
+        0x0A, 0x38,
+        0x00, 0x1B,  # bytes 2, 3: DHW 27 kWh
+        0x00, 0x34,  # bytes 4, 5: Heating 52 kWh
+        0x00, 0x36, 0x00, 0x71, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x08, 0x15,  # bytes 44, 45: Realtime heat production 2069 W = 2.07 kW
+    ])
+
+    frame_08 = _c3_frame(raw_08_body)
+    frame_0a = _c3_frame(raw_0a_body)
+
+    energy = decode_atw_energy(frame_08, frame_0a)
+
+    assert isinstance(energy, ITSEnergy)
+    assert energy.realtime_consumption_kw == 0.72
+    assert energy.realtime_consumption_w == 720
+    assert energy.dhw_consumption_kwh == 27
+    assert energy.heating_consumption_kwh == 52
+    assert energy.total_consumption_kwh == 79
+    assert energy.realtime_production_kw == 2.07
+    assert energy.realtime_production_w == 2069
+    assert energy.cop == 2.88
+
+
+def test_query_energy_calls_subtypes_08_and_0a():
+    """query_energy sends subtype 0x08 and 0x0a commands and decodes result."""
+    client = _make_client()
+    raw_08_body = bytes([0x08] + [0] * 98 + [0x00, 0x48])
+    raw_0a_body = bytes([0x0A, 0x00, 0x00, 0x0A, 0x00, 0x14] + [0] * 38 + [0x03, 0xE8])
+
+    calls = []
+
+    def mock_send(appl, cmd):
+        calls.append(cmd)
+        if cmd == build_c3_query(0x08):
+            return _c3_frame(raw_08_body)
+        if cmd == build_c3_query(0x0A):
+            return _c3_frame(raw_0a_body)
+        return ""
+
+    with patch.object(client, "send_hex_command", side_effect=mock_send):
+        energy = client.query_energy("APPL1")
+
+    assert calls == [build_c3_query(0x08), build_c3_query(0x0A)]
+    assert energy.realtime_consumption_kw == 0.72
+    assert energy.dhw_consumption_kwh == 10
+    assert energy.heating_consumption_kwh == 20
+    assert energy.total_consumption_kwh == 30
+    assert energy.realtime_production_w == 1000
+    assert energy.realtime_production_kw == 1.00
+    assert energy.cop == round(1.00 / 0.72, 2)

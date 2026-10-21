@@ -125,16 +125,21 @@ Status `raw_body` (0-indexed; STANDARD misreads this 25-byte frame):
   temperatures and ODU current/voltage as unavailable, while retaining the status-derived Zone-1/DHW
   setpoints and DHW tank temperature. Gate on the exact frame signature as well as the ATW profile;
   never suppress or remap all `171H120F` sensor frames from `sn8` alone.
-- **27-byte status variant (#38, Galmet Prima 8GT):** the same `sn8` also emits a status layout ending
-  `e0,03,03`. In two same-moment captures, `body[6]` tracked the Zone-1 target directly (25/28 °C),
-  while the Italtherm `body[9] / 2` field stayed at a false 24 °C. Gate this mapping on the status
-  frame's structural signature, not `sn8` alone. When paired with the sensor template, climate current
+- **27-byte status variant (#38, Galmet Prima 8GT / Firebird / Enviroair):** the same `sn8` also emits
+  a status layout ending `e0,xx,03` (`body[24] == 0xe0` and `body[26] == 0x03`). `body[2]` carries the total
+  energy production counter in kWh, and `body[4:6] == b"\x03\x03"`. `body[6]` tracks the Zone-1 target directly
+  (e.g. 25/28/40 °C), while the Italtherm `body[9] / 2` field stayed at a false half value. Gate this mapping
+  on the status frame's structural signature (`len == 27 and body[4:6] == b"\x03\x03" and body[24] == 0xe0 and body[26] == 0x03`),
+  never hardcode dynamic energy counters in bytes 2-3. When paired with the sensor template, climate current
   temperature is unavailable; do not relabel the separately exposed DHW tank temperature as Zone-1
   water temperature. Three controlled captures establish `body[1] & 0x01` as Zone-1 power for this
   layout: it is set (`0x05`) in both active-heating and compressor-stopped states, and clear (`0x04`)
-  when Zone-1 is off. Decode that as Heat/Off only for this structural variant. The active and stopped
-  frames were otherwise identical, so compressor running state and frequency are unavailable—never
-  infer them from this bit or report false/0.
+  when Zone-1 is off. Decode that as Heat/Off only for this structural variant.
+- **ATW energy & power telemetry (subtypes `0x08` and `0x0a`):** ATW models report active electric power
+  consumption at subtype `0x08` body offset 99-100 (`(body[99] << 8 | body[100]) / 100.0` in kW). Subtype
+  `0x0a` reports DHW consumption at `body[2:4]`, heating consumption at `body[4:6]` (summed as total consumption in
+  kWh), and realtime heat production power at `body[44:46]` in Watts (`/ 1000.0` kW), enabling continuous COP
+  calculation (`prod_kw / cons_kw`).
 
 ### KJRH-120L dual variant (`sn8 17100003`, #5) — hardware-validated reads
 - The same `sn8` covers pure-DHW and Zone-1 + DHW controllers. Gate the dual layout only when status

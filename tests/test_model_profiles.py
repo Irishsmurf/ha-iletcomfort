@@ -231,6 +231,23 @@ def test_galmet_atw_status_uses_direct_zone1_target(name, expected_target):
     assert status.set_temperature == 44
 
 
+def test_atw_27byte_status_dynamic_energy_and_zone1_target():
+    """A 27-byte ATW status frame with arbitrary energy counter decodes correctly."""
+    # Real hardware frame from Firebird/Enviroair unit with 117 kWh energy production
+    raw = _bytes(
+        "01,0d,75,90,03,03,28,1e,30,30,41,23,19,05,37,19,19,05,"
+        "3c,22,3c,14,2c,00,e0,09,03"
+    )
+    status = decode_atw_status(raw)
+
+    assert status.t5s_def == 40.0
+    assert status.total_kwh == 117
+    assert status.box_bottom_temp == 44.0
+    assert status.error_code == 0
+    assert status.comp_running is None
+    assert status.comp_frq is None
+
+
 @pytest.mark.parametrize(
     "body",
     [
